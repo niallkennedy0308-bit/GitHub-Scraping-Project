@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum ValidationStatus {
+  pending
+  legitimate
+  suspicious
+  confirmed_scam
+}
+
+enum JobStatus {
+  queued
+  running
+  completed
+  completed_with_errors
+  failed
+  cancelled
+}
+
+enum RuleSeverity {
+  info
+  low
+  medium
+  high
+  exclusion
+}
+
+enum RuleGroupLogic {
+  AND
+  OR
+}
+
+enum RuleAction {
+  flag
+  exclude
+  score
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  name                 String?
+  passwordHash         String
+  role                 Role     @default(USER)
+  githubTokenEncrypted String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  scrapingConfigurations ScrapingConfiguration[] @relation("ConfigCreatedBy")
+  scrapingJobs           ScrapingJob[]           @relation("JobStartedBy")
+  reviews                UserValidationHistory[] @relation("ReviewedBy")
+  auditLogs              AuditLog[]
+}
+
+model ScrapingConfiguration {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  githubSearchUrl String
+  searchQuery     String?
+  enabled         Boolean  @default(true)
+  ruleSetId       String?
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy User              @relation("ConfigCreatedBy", fields: [createdById], references: [id])
+  ruleSet   ScamRuleSet?      @relation(fields: [ruleSetId], references: [id])
+  jobs      ScrapingJob[]
+}
+
+model ScamRuleSet {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  groupLogic  RuleGroupLogic @default(AND)
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rules          ScamDetectionRule[]
+  configurations ScrapingConfiguration[]
+}
+
+model ScamDetectionRule {
+  id          String       @id @default(cuid())
+  ruleSetId   String
+  name        String
+  field       String
+  operator    String
+  value       String?
+  valueTo     String?
+  severity    RuleSeverity @default(medium)
+  action      RuleAction   @default(flag)
+  scoreWeight Int          @default(10)
+  description String?
+  enabled     Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  ruleSet ScamRuleSet @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+}
+
+model ScrapingJob {
+  id                   String    @id @default(cuid())
+  configurationId      String
+  githubSearchUrl      String
+  searchQuery          String?
+  status               JobStatus @default(queued)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  profilesDiscovered   Int       @default(0)
+  newUsers             Int       @default(0)
+  duplicateUsers       Int       @default(0)
+  excludedUsers        Int       @default(0)
+  flaggedUsers         Int       @default(0)
+  errorCount           Int       @default(0)
+  progressMessage      String?
+  cancelRequested      Boolean   @default(false)
+  startedById          String
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  configuration ScrapingConfiguration @relation(fields: [configurationId], references: [id])
+  startedBy     User                  @relation("JobStartedBy", fields: [startedById], references: [id])
+  jobUsers      ScrapingJobUser[]
+  errors        ScrapingJobError[]
+  githubUsers   GitHubUser[]          @relation("LastScrapingJob")
+}
+
+model GitHubUser {
+  id                 String           @id @default(cuid())
+  githubId           Int              @unique
+  login              String
+  nodeId             String?
+  avatarUrl          String?
+  gravatarId         String?
+  url                String?
+  htmlUrl            String?
+  type               String?
+  userViewType       String?
+  siteAdmin          Boolean          @default(false)
+  name               String?
+  company            String?
+  blog               String?
+  location           String?
+  email              String?
+  linkedinUrl        String?
+  hireable           Boolean?
+  bio                String?
+  twitterUsername    String?
+  publicRepos        Int              @default(0)
+  publicGists        Int              @default(0)
+  followers          Int              @default(0)
+  following          Int              @default(0)
+  githubCreatedAt    DateTime?
+  githubUpdatedAt    DateTime?
+  rawProfile         String
+  validationStatus   ValidationStatus @default(pending)
+  riskScore          Int              @default(0)
+  matchedRuleIds     String           @default("[]")
+  validationReasons  String           @default("[]")
+  reviewedById       String?
+  reviewedAt         DateTime?
+  firstScrapedAt     DateTime         @default(now())
+  lastScrapedAt      DateTime         @default(now())
+  lastScrapingJobId  String?
+  deletedAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  lastScrapingJob ScrapingJob?            @relation("LastScrapingJob", fields: [lastScrapingJobId], references: [id])
+  jobUsers        ScrapingJobUser[]
+  history         UserValidationHistory[]
+
+  @@index([login])
+  @@index([validationStatus])
+  @@index([riskScore])
+  @@index([followers])
+  @@index([publicRepos])
+  @@index([githubCreatedAt])
+  @@index([firstScrapedAt])
+  @@index([lastScrapedAt])
+  @@index([company])
+  @@index([location])
+  @@index([deletedAt])
+}
+
+model ScrapingJobUser {
+  id           String   @id @default(cuid())
+  jobId        String
+  githubUserId String
+  outcome      String
+  createdAt    DateTime @default(now())
+
+  job        ScrapingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  githubUser GitHubUser  @relation(fields: [githubUserId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, githubUserId])
+  @@index([jobId])
+  @@index([githubUserId])
+}
+
+model UserValidationHistory {
+  id           String            @id @default(cuid())
+  githubUserId String
+  previousStatus ValidationStatus?
+  newStatus    ValidationStatus
+  riskScore    Int?
+  matchedRuleIds String?
+  reasons      String?
+  note         String?
+  reviewedById String?
+  source       String            @default("manual")
+  createdAt    DateTime          @default(now())
+
+  githubUser GitHubUser @relation(fields: [githubUserId], references: [id], onDelete: Cascade)
+  reviewedBy User?      @relation("ReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([githubUserId])
+}
+
+model ScrapingJobError {
+  id        String   @id @default(cuid())
+  jobId     String
+  message   String
+  details   String?
+  createdAt DateTime @default(now())
+
+  job ScrapingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  details    String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

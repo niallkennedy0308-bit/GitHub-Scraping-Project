@@ -101,31 +101,34 @@ export function ScrapingJobStatus({
           ) : null}
         </div>
 
-        <div className="mt-5 rounded-2xl border border-teal-200/70 bg-gradient-to-br from-teal-50 to-cyan-50/40 px-4 py-3.5 shadow-sm">
+        <div className="mt-5 rounded-2xl border border-[color:var(--border-strong)] bg-[color:var(--accent-soft)] px-4 py-3.5 shadow-sm ring-1 ring-inset ring-[color:var(--accent)]/20">
           <div className="flex items-start gap-3">
             {active ? (
-              <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-[color:var(--link)]" />
+              <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-[color:var(--accent)]" />
             ) : (
               <div
                 className={cn(
-                  "mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full",
+                  "mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-[color:var(--surface-solid)]",
                   job.status === "completed"
-                    ? "bg-emerald-500"
+                    ? "bg-emerald-400"
                     : job.status.includes("fail")
-                      ? "bg-rose-500"
-                      : "bg-amber-500",
+                      ? "bg-rose-400"
+                      : "bg-amber-400",
                 )}
               />
             )}
-            <div>
-              <p className="text-sm font-medium text-foreground">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">
                 {active ? "Scraping status" : "Final status"}
               </p>
-              <p className="mt-1 text-sm text-foreground/90">{progressHint}</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{progressHint}</p>
               {job.status === "queued" ? (
-                <p className="mt-2 text-xs text-amber-800">
-                  Tip: keep <code className="rounded bg-[color:var(--surface-solid)] px-1">npm run worker</code> running,
-                  or the job will stay queued.
+                <p className="mt-2 text-xs text-foreground/80">
+                  Tip: keep{" "}
+                  <code className="rounded border border-border bg-[color:var(--surface-solid)] px-1 text-foreground">
+                    npm run worker
+                  </code>{" "}
+                  running, or the job will stay queued.
                 </p>
               ) : null}
             </div>
@@ -133,16 +136,16 @@ export function ScrapingJobStatus({
 
           {active ? (
             <div className="mt-4 space-y-2">
-              <div className="h-2.5 overflow-hidden rounded-full bg-teal-100/90 ring-1 ring-teal-200/60">
+              <div className="h-2.5 overflow-hidden rounded-full bg-[color:var(--surface-solid)]/70 ring-1 ring-[color:var(--border-strong)]">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 transition-all duration-500"
+                  className="h-full rounded-full bg-[color:var(--accent)] transition-all duration-500"
                   style={{
                     // Approximate progress against default scrape cap (10 pages × 30 users).
                     width: `${Math.min(99, Math.max(8, Math.round((job.profilesDiscovered / 300) * 100)))}%`,
                   }}
                 />
               </div>
-              <p className="text-xs text-[color:var(--accent-strong)]">
+              <p className="text-xs font-medium text-foreground/85">
                 Processed {job.profilesDiscovered} profiles so far
                 {job.progressMessage?.toLowerCase().includes("waiting") ||
                 job.progressMessage?.toLowerCase().includes("rate limit")

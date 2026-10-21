@@ -7,7 +7,7 @@ export default async function HomePage() {
     redirect("/admin");
   }
   if (session?.user?.role === "USER") {
-    redirect("/admin/users");
+    redirect("/portal/discover");
   }
   redirect("/login");
 }

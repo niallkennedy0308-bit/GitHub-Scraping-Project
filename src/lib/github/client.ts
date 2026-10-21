@@ -105,8 +105,13 @@ async function githubFetch(url: string, token?: string | null): Promise<Response
   if (response.status === 403 || response.status === 429) {
     const body = await response.text().catch(() => "");
     const secondary = /secondary rate limit|abuse detection/i.test(body);
+    const resetLabel = reset
+      ? new Date(reset * 1000).toLocaleString()
+      : "later";
     throw new GitHubApiError(
-      secondary ? "GitHub secondary rate limit — waiting to retry" : "GitHub rate limit exceeded",
+      secondary
+        ? `GitHub secondary rate limit — waiting to retry (resets ~${resetLabel})`
+        : `GitHub rate limit exceeded (remaining ${remaining}). Resets ~${resetLabel}`,
       response.status,
       {
         rateLimitRemaining: remaining,
@@ -161,6 +166,67 @@ export async function fetchUserProfile(
   return (await response.json()) as GitHubUserProfile;
 }
 
+export type GitHubSocialAccount = {
+  provider: string;
+  url: string;
+};
+
+/** Public LinkedIn/Twitter/etc. links shown in the GitHub profile sidebar. */
+export async function fetchUserSocialAccounts(
+  login: string,
+  token?: string | null,
+): Promise<GitHubSocialAccount[]> {
+  const base = process.env.GITHUB_API_BASE || "https://api.github.com";
+  const response = await githubFetch(
+    `${base}/users/${encodeURIComponent(login)}/social_accounts`,
+    token,
+  );
+  const data = (await response.json()) as unknown;
+  if (!Array.isArray(data)) return [];
+  return data
+    .filter(
+      (item): item is GitHubSocialAccount =>
+        Boolean(
+          item &&
+            typeof item === "object" &&
+            typeof (item as GitHubSocialAccount).provider === "string" &&
+            typeof (item as GitHubSocialAccount).url === "string",
+        ),
+    )
+    .map((item) => ({ provider: item.provider, url: item.url }));
+}
+
+/**
+ * Profile README shown in the main column of a GitHub profile
+ * (from the special public repo `{login}/{login}`). Returns null when absent.
+ */
+export async function fetchProfileReadme(
+  login: string,
+  token?: string | null,
+): Promise<string | null> {
+  const base = process.env.GITHUB_API_BASE || "https://api.github.com";
+  const encoded = encodeURIComponent(login);
+  const url = `${base}/repos/${encoded}/${encoded}/readme`;
+
+  try {
+    const response = await githubFetch(url, token);
+    const data = (await response.json()) as {
+      content?: string;
+      encoding?: string;
+    };
+    if (!data.content) return null;
+    if (data.encoding && data.encoding !== "base64") {
+      return String(data.content);
+    }
+    return Buffer.from(data.content.replace(/\n/g, ""), "base64").toString("utf8");
+  } catch (error) {
+    if (error instanceof GitHubApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function verifyGitHubToken(token: string): Promise<{ login: string }> {
   const response = await githubFetch("https://api.github.com/user", token);
   const data = (await response.json()) as { login?: string };
@@ -168,6 +234,38 @@ export async function verifyGitHubToken(token: string): Promise<{ login: string 
     throw new GitHubApiError("Token verification failed", 401, { permanent: true });
   }
   return { login: data.login };
+}
+
+export type GitHubRateLimitSnapshot = {
+  coreLimit: number;
+  coreRemaining: number;
+  coreReset: number;
+  searchLimit: number;
+  searchRemaining: number;
+  searchReset: number;
+  authenticated: boolean;
+};
+
+export async function fetchRateLimit(token?: string | null): Promise<GitHubRateLimitSnapshot> {
+  const response = await githubFetch("https://api.github.com/rate_limit", token);
+  const data = (await response.json()) as {
+    resources?: {
+      core?: { limit?: number; remaining?: number; reset?: number };
+      search?: { limit?: number; remaining?: number; reset?: number };
+    };
+  };
+  const coreLimit = Number(data.resources?.core?.limit ?? 0);
+  const searchLimit = Number(data.resources?.search?.limit ?? 0);
+  return {
+    coreLimit,
+    coreRemaining: Number(data.resources?.core?.remaining ?? 0),
+    coreReset: Number(data.resources?.core?.reset ?? 0),
+    searchLimit,
+    searchRemaining: Number(data.resources?.search?.remaining ?? 0),
+    searchReset: Number(data.resources?.search?.reset ?? 0),
+    // Authenticated classic/fine-grained tokens normally get ~5000 core / ~30 search.
+    authenticated: coreLimit > 60 || searchLimit > 10,
+  };
 }
 
 export async function sleep(ms: number) {
@@ -204,7 +302,8 @@ export async function withRetry<T>(
         const waitSec = error.rateLimitReset
           ? Math.max(5, error.rateLimitReset - now)
           : Math.max(5, Math.ceil(delay / 1000));
-        waitMs = Math.min(waitSec, 90) * 1000;
+        // Wait up to 15 minutes for primary rate-limit reset (was capped at 90s).
+        waitMs = Math.min(waitSec, 15 * 60) * 1000;
       } else {
         delay = Math.min(delay * 2, 30000);
       }
@@ -214,7 +313,18 @@ export async function withRetry<T>(
           `${error.message}. Waiting ${Math.ceil(waitMs / 1000)}s before retry ${attempt}/${maxAttempts}…`,
         );
       }
-      await sleep(waitMs);
+
+      // Sleep in short slices so cancel requests are honored during long rate-limit waits.
+      const sliceMs = 2000;
+      let remaining = waitMs;
+      while (remaining > 0) {
+        if (opts?.shouldCancel && (await opts.shouldCancel())) {
+          throw new Error("Job cancelled");
+        }
+        const step = Math.min(sliceMs, remaining);
+        await sleep(step);
+        remaining -= step;
+      }
     }
   }
 }

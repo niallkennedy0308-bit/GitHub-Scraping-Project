@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { jsonError, requireAdmin } from "@/lib/auth-guards";
 import { prisma } from "@/lib/db";
-import { verifyGitHubToken } from "@/lib/github/client";
+import { fetchRateLimit, verifyGitHubToken } from "@/lib/github/client";
 import { writeAuditLog } from "@/lib/services/audit";
-import { getAdminTokenStatus } from "@/lib/services/admin-token";
+import { getAdminGitHubToken, getAdminTokenStatus } from "@/lib/services/admin-token";
 import { encryptSecret } from "@/lib/token-crypto";
 
 const updateSchema = z.object({
@@ -16,9 +16,23 @@ export async function GET() {
   try {
     const session = await requireAdmin();
     const status = await getAdminTokenStatus(session.user.id);
+    let rateLimit = null;
+    if (status.configured) {
+      const token = await getAdminGitHubToken(session.user.id);
+      if (token) {
+        try {
+          rateLimit = await fetchRateLimit(token);
+        } catch (error) {
+          rateLimit = {
+            error: error instanceof Error ? error.message : "Failed to read GitHub rate limit",
+          };
+        }
+      }
+    }
     return NextResponse.json({
       email: session.user.email,
       githubToken: status,
+      rateLimit,
     });
   } catch (error) {
     return jsonError(error);
@@ -68,9 +82,16 @@ export async function PATCH(request: Request) {
     });
 
     const status = await getAdminTokenStatus(session.user.id);
+    let rateLimit = null;
+    try {
+      rateLimit = await fetchRateLimit(token);
+    } catch {
+      rateLimit = null;
+    }
     return NextResponse.json({
       email: session.user.email,
       githubToken: status,
+      rateLimit,
       verifiedAs: verified.login,
     });
   } catch (error) {

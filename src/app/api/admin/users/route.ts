@@ -33,19 +33,21 @@ export async function GET(request: Request) {
     const where: Prisma.GitHubUserWhereInput = {};
     if (!includeDeleted) where.deletedAt = null;
 
+    // Status is derived from risk thresholds (and optional manual review).
+    if (status) {
+      where.validationStatus = status as Prisma.EnumValidationStatusFilter["equals"];
+    }
+
     if (q) {
       where.OR = [
         { login: { contains: q } },
         { name: { contains: q } },
         { bio: { contains: q } },
         { company: { contains: q } },
-        { location: { contains: q } },
       ];
     }
-
-    if (status) where.validationStatus = status as Prisma.EnumValidationStatusFilter["equals"];
     if (company) where.company = { contains: company };
-    if (location) where.location = { contains: location };
+    if (location?.trim()) where.location = { contains: location.trim() };
     if (jobId) where.lastScrapingJobId = jobId;
     if (ruleId) where.matchedRuleIds = { contains: ruleId };
 

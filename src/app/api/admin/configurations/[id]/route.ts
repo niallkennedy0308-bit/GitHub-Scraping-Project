@@ -44,6 +44,21 @@ export async function PATCH(request: Request, { params }: Params) {
       if (parsed.ruleSetId !== undefined) data.ruleSetId = parsed.ruleSetId;
       if (parsed.githubSearchUrl !== undefined) {
         const github = validateAndParseGitHubSearch(parsed.githubSearchUrl);
+        const duplicate = await prisma.scrapingConfiguration.findFirst({
+          where: {
+            id: { not: id },
+            OR: [{ githubSearchUrl: github.githubSearchUrl }, { searchQuery: github.searchQuery }],
+          },
+          select: { name: true },
+        });
+        if (duplicate) {
+          return NextResponse.json(
+            {
+              error: `This search URL is already saved as “${duplicate.name}”. Delete that configuration before reusing it.`,
+            },
+            { status: 409 },
+          );
+        }
         data.githubSearchUrl = github.githubSearchUrl;
         data.searchQuery = github.searchQuery;
       }

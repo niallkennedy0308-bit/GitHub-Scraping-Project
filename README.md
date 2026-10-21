@@ -34,7 +34,18 @@ Open [http://localhost:3000](http://localhost:3000).
 | Admin | admin@example.com  | admin123  |
 | User  | user@example.com   | user123   |
 
-Regular users receive **403** on `/admin` and `/api/admin/*`.
+Regular users are redirected to the **user portal** (`/portal/discover`). They receive **403** on `/admin` and `/api/admin/*`.
+
+### User portal (`/portal`)
+
+| Area | Path | Notes |
+|------|------|--------|
+| Discover | `/portal/discover` | Browse scraped profiles (excludes `confirmed_scam`) |
+| Profile | `/portal/discover/[id]` | Save contact + submit scam report |
+| Contacts | `/portal/contacts` | Personal saved list |
+| Reports | `/portal/reports` | Reporter’s own scam reports |
+
+Admins review inbound reports at **Admin → User Scam Reports** (`/admin/reports`). Confirming a profile as scam still uses the existing profile review flow.
 
 ## Environment
 
@@ -70,7 +81,8 @@ Never commit real tokens. The frontend never receives `GITHUB_TOKEN`.
 4. **Scraping Jobs** — queue/run/cancel + live counters  
 5. **GitHub Users** — search, filter, sort, paginate, bulk actions  
 6. **Scam Review** — manual decisions with history  
-7. **Scraping History** — terminal job summaries + completion toasts  
+7. **User Scam Reports** — review reports submitted from the user portal  
+8. **Scraping History** — terminal job summaries + completion toasts  
 
 ## Design notes
 

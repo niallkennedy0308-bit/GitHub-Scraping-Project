@@ -52,6 +52,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Configuration is disabled" }, { status: 400 });
     }
 
+    const priorJobs = await prisma.scrapingJob.count({
+      where: { configurationId: config.id },
+    });
+    if (priorJobs > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This search URL has already been used. URLs are not reused. Delete the configuration if you need to set the same search up again.",
+        },
+        { status: 409 },
+      );
+    }
+
     const job = await prisma.scrapingJob.create({
       data: {
         configurationId: config.id,

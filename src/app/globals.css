@@ -618,3 +618,15 @@ select.ui-field {
 .ui-enter {
   animation: ui-fade-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+.portal-readme.markdown-body {
+  max-height: 42rem;
+  overflow: auto;
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.75rem;
+}
+
+.portal-readme.markdown-body img {
+  max-width: 100%;
+  height: auto;
+}

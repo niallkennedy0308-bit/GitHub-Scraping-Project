@@ -3,6 +3,7 @@ import {
   DATE_FIELDS,
   NUMERIC_FIELDS,
   STRING_FIELDS,
+  type AutoValidationStatus,
   type EvaluableRule,
   type GitHubProfileLike,
   type RuleMatch,
@@ -11,6 +12,15 @@ import {
 import { profileHasLinkedIn, profileHasSocialLinks } from "@/lib/scam-rules/simple-form";
 
 const SAFE_REGEX = /^[\w\s.\-@+*?^$[\](){}|\\,]{1,200}$/;
+
+/** Map risk % to automatic validation status. */
+export function statusFromRiskScore(riskScore: number): AutoValidationStatus {
+  const score = Math.min(100, Math.max(0, riskScore));
+  if (score >= 70) return "confirmed_scam";
+  if (score >= 30) return "suspicious";
+  if (score > 0) return "pending";
+  return "legitimate";
+}
 
 function getFieldValue(profile: GitHubProfileLike, field: string): unknown {
   if (field === "has_linkedin") return profileHasLinkedIn(profile);
@@ -224,7 +234,8 @@ export function evaluateRules(
   );
 
   const flagged = !excluded && effectiveMatches.length > 0;
-  const status = flagged ? "suspicious" : "pending";
+  // Thresholds: 0 → legitimate; 1–29 → pending; 30–69 → suspicious; 70+ → confirmed_scam
+  const status = excluded ? "pending" : statusFromRiskScore(riskScore);
 
   return {
     matches: effectiveMatches,

@@ -27,6 +27,10 @@ describe("simple rule form", () => {
       "has_social_links",
       "company",
     ]);
+    expect(rules.find((r) => r.field === "has_linkedin")?.scoreWeight).toBe(35);
+    expect(rules.find((r) => r.field === "email")?.scoreWeight).toBe(25);
+    expect(rules.find((r) => r.field === "has_social_links")?.scoreWeight).toBe(15);
+    expect(rules.find((r) => r.field === "location")?.scoreWeight).toBe(15);
   });
 
   it("detects linkedin and social links", () => {
@@ -66,6 +70,8 @@ describe("simple rule form", () => {
     );
 
     expect(decision.flagged).toBe(true);
+    // Missing email (25) + company (15) = 40% → suspicious band
+    expect(decision.riskScore).toBe(40);
     expect(decision.status).toBe("suspicious");
   });
 });

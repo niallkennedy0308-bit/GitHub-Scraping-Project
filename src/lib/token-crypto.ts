@@ -29,5 +29,11 @@ export function decryptSecret(payload: string): string {
 export function maskToken(token: string): string {
   const trimmed = token.trim();
   if (trimmed.length <= 8) return "••••••••";
-  return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`;
+  // Keep a recognizable prefix so the UI can show classic vs fine-grained.
+  const prefixLen = trimmed.startsWith("github_pat_")
+    ? 11
+    : trimmed.startsWith("ghp_") || trimmed.startsWith("gho_") || trimmed.startsWith("ghu_")
+      ? 4
+      : Math.min(7, trimmed.length - 4);
+  return `${trimmed.slice(0, prefixLen)}…${trimmed.slice(-4)}`;
 }

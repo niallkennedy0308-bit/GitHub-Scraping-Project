@@ -1,5 +1,16 @@
 import type { EvaluableRule } from "@/lib/scam-rules/types";
 
+/**
+ * Risk % = sum of matched rule weights (capped at 100).
+ * Missing LinkedIn is strongest, then missing email; other signals share a base weight.
+ */
+export const RULE_SCORE_WEIGHTS = {
+  missingLinkedIn: 35,
+  missingEmail: 25,
+  /** Location, created date, repos, any social links, company */
+  baseSignal: 15,
+} as const;
+
 export type SimpleRuleForm = {
   location: string;
   createdDate: string;
@@ -48,7 +59,7 @@ export function simpleFormToRules(form: SimpleRuleForm): StoredRule[] {
       value: form.location.trim(),
       severity: "medium",
       action: "flag",
-      scoreWeight: 15,
+      scoreWeight: RULE_SCORE_WEIGHTS.baseSignal,
       description: `Location contains "${form.location.trim()}"`,
       enabled: true,
       sortOrder: order++,
@@ -63,7 +74,7 @@ export function simpleFormToRules(form: SimpleRuleForm): StoredRule[] {
       value: new Date(`${form.createdDate.trim()}T00:00:00.000Z`).toISOString(),
       severity: "low",
       action: "flag",
-      scoreWeight: 15,
+      scoreWeight: RULE_SCORE_WEIGHTS.baseSignal,
       description: `Account created after ${form.createdDate.trim()}`,
       enabled: true,
       sortOrder: order++,
@@ -78,7 +89,7 @@ export function simpleFormToRules(form: SimpleRuleForm): StoredRule[] {
       value: String(Number(form.repositoryNumber)),
       severity: "info",
       action: "flag",
-      scoreWeight: 10,
+      scoreWeight: RULE_SCORE_WEIGHTS.baseSignal,
       description: `Public repositories ≤ ${form.repositoryNumber}`,
       enabled: true,
       sortOrder: order++,
@@ -91,9 +102,9 @@ export function simpleFormToRules(form: SimpleRuleForm): StoredRule[] {
       field: "email",
       operator: "is_empty",
       value: null,
-      severity: "medium",
+      severity: "high",
       action: "flag",
-      scoreWeight: 10,
+      scoreWeight: RULE_SCORE_WEIGHTS.missingEmail,
       description: "Public email is missing",
       enabled: true,
       sortOrder: order++,
@@ -106,9 +117,9 @@ export function simpleFormToRules(form: SimpleRuleForm): StoredRule[] {
       field: "has_linkedin",
       operator: "is_false",
       value: null,
-      severity: "medium",
+      severity: "high",
       action: "flag",
-      scoreWeight: 15,
+      scoreWeight: RULE_SCORE_WEIGHTS.missingLinkedIn,
       description: "No LinkedIn link found in profile",
       enabled: true,
       sortOrder: order++,
@@ -123,7 +134,7 @@ export function simpleFormToRules(form: SimpleRuleForm): StoredRule[] {
       value: null,
       severity: "medium",
       action: "flag",
-      scoreWeight: 10,
+      scoreWeight: RULE_SCORE_WEIGHTS.baseSignal,
       description: "No social links found on profile",
       enabled: true,
       sortOrder: order++,
@@ -138,7 +149,7 @@ export function simpleFormToRules(form: SimpleRuleForm): StoredRule[] {
       value: null,
       severity: "low",
       action: "flag",
-      scoreWeight: 10,
+      scoreWeight: RULE_SCORE_WEIGHTS.baseSignal,
       description: "Company is missing",
       enabled: true,
       sortOrder: order++,
@@ -208,14 +219,17 @@ export function profileHasLinkedIn(profile: Record<string, unknown>): boolean {
     profile.company,
     profile.linkedin_url,
     profile.linkedinUrl,
+    profile.profile_readme,
+    profile.profileReadme,
   ]
     .map((v) => (v == null ? "" : String(v).toLowerCase()))
     .join(" ");
-  return haystack.includes("linkedin.com") || haystack.includes("linkedin");
+  return haystack.includes("linkedin.com") || /linkedin/.test(haystack);
 }
 
 export function profileHasSocialLinks(profile: Record<string, unknown>): boolean {
   const blog = String(profile.blog || "").trim();
   const twitter = String(profile.twitter_username || "").trim();
-  return Boolean(blog || twitter || profileHasLinkedIn(profile));
+  const readme = String(profile.profile_readme || profile.profileReadme || "").trim();
+  return Boolean(blog || twitter || readme || profileHasLinkedIn(profile));
 }

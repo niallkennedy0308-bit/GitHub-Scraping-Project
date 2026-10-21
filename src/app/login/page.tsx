@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList } from "lucide-react";
 import { Alert, Button, Input, Label } from "@/components/admin/ui";
@@ -9,7 +9,7 @@ import { Alert, Button, Input, Label } from "@/components/admin/ui";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/admin";
+  const callbackUrl = searchParams.get("callbackUrl");
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("admin123");
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +24,21 @@ function LoginForm() {
       password,
       redirect: false,
     });
-    setLoading(false);
     if (result?.error) {
+      setLoading(false);
       setError("Invalid email or password");
       return;
     }
-    router.push(callbackUrl);
+    const session = await getSession();
+    const role = session?.user?.role;
+    const defaultHome = role === "USER" ? "/portal/discover" : "/admin";
+    const target =
+      callbackUrl &&
+      !(role === "USER" && (callbackUrl.startsWith("/admin") || callbackUrl === "/"))
+        ? callbackUrl
+        : defaultHome;
+    setLoading(false);
+    router.push(target);
     router.refresh();
   }
 
@@ -53,8 +62,8 @@ function LoginForm() {
             <ClipboardList className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-white">Admin sign in</h1>
-            <p className="text-sm text-muted">GitHub scraping & validation console</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white">Sign in</h1>
+            <p className="text-sm text-muted">Admin console or user discovery portal</p>
           </div>
         </div>
 

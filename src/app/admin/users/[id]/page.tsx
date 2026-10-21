@@ -34,6 +34,7 @@ type UserDetail = {
   email?: string | null;
   linkedinUrl?: string | null;
   blog?: string | null;
+  profileReadme?: string | null;
   twitterUsername?: string | null;
   hireable?: boolean | null;
   publicRepos: number;
@@ -322,6 +323,22 @@ export default function UserDetailPage() {
             missingLinkedIn={missingLinkedIn}
             onSaved={load}
           />
+
+          <div className="mt-6 border-t border-border pt-5">
+            <h2 className="font-semibold text-foreground">Profile README</h2>
+            <p className="mt-1 text-xs text-muted">
+              Main profile content from GitHub (special repo{" "}
+              <code className="font-mono">{user.login}/{user.login}</code>). Email and LinkedIn
+              are extracted from this text when missing elsewhere.
+            </p>
+            {user.profileReadme?.trim() ? (
+              <pre className="mt-3 max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-[color:var(--surface-muted)] p-4 text-xs leading-relaxed text-foreground/90">
+                {user.profileReadme}
+              </pre>
+            ) : (
+              <p className="mt-3 text-sm text-muted">No profile README found for this user.</p>
+            )}
+          </div>
         </Card>
 
         <div className="space-y-6">

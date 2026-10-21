@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/db";
-import { fetchUserProfile, searchUsersPage, withRetry } from "@/lib/github/client";
+import {
+  fetchProfileReadme,
+  fetchRateLimit,
+  fetchUserProfile,
+  fetchUserSocialAccounts,
+  searchUsersPage,
+  withRetry,
+} from "@/lib/github/client";
 import { normalizeGitHubProfile } from "@/lib/github/normalize";
 import { validateAndParseGitHubSearch } from "@/lib/github-url";
 import { getAdminGitHubToken } from "@/lib/services/admin-token";
@@ -89,6 +96,34 @@ export async function runScrapingJob(jobId: string) {
   const maxPages = Number(process.env.SCRAPER_MAX_PAGES || 10);
 
   try {
+    const quota = await fetchRateLimit(token);
+    const resetLabel = quota.coreReset
+      ? new Date(quota.coreReset * 1000).toLocaleString()
+      : "later";
+    await bumpCounters(jobId, {
+      progressMessage: `GitHub quota: ${quota.coreRemaining}/${quota.coreLimit} core remaining (resets ~${resetLabel})`,
+    });
+
+    if (!quota.authenticated) {
+      await recordError(
+        jobId,
+        `GitHub is treating requests as unauthenticated (core limit ${quota.coreLimit}/hour). Re-save a valid classic PAT (ghp_…) or fine-grained token with public profile access in Settings.`,
+      );
+    }
+
+    if (quota.coreRemaining < 10) {
+      await recordError(
+        jobId,
+        `GitHub core rate limit nearly exhausted (${quota.coreRemaining}/${quota.coreLimit} left). Wait until ~${resetLabel} before scraping again.`,
+      );
+      await finalizeJob(
+        jobId,
+        "failed",
+        `Rate limit exhausted — wait until ~${resetLabel}`,
+      );
+      return;
+    }
+
     const parsed = validateAndParseGitHubSearch(job.githubSearchUrl);
     let page = 1;
     let hasMore = true;
@@ -135,8 +170,30 @@ export async function runScrapingJob(jobId: string) {
                 progressMessage: `Waiting on GitHub for @${item.login}: ${message}`,
               }),
           });
-          const normalized = normalizeGitHubProfile(profile);
-          const decision = validateProfile(normalized, job.configuration.ruleSet);
+          // LinkedIn lives on /users/{login}/social_accounts — not on the basic profile payload.
+          const socialAccounts = await withRetry(
+            () => fetchUserSocialAccounts(item.login, token),
+            {
+              shouldCancel: () => isCancelRequested(jobId),
+              onWait: (message) =>
+                bumpCounters(jobId, {
+                  progressMessage: `Waiting on GitHub social links for @${item.login}: ${message}`,
+                }),
+            },
+          );
+          // Profile README (main column / red-box area) may contain email + LinkedIn.
+          const profileReadme = await withRetry(
+            () => fetchProfileReadme(item.login, token),
+            {
+              shouldCancel: () => isCancelRequested(jobId),
+              onWait: (message) =>
+                bumpCounters(jobId, {
+                  progressMessage: `Waiting on GitHub README for @${item.login}: ${message}`,
+                }),
+            },
+          );
+          const normalized = normalizeGitHubProfile(profile, socialAccounts, profileReadme);
+          const decision = validateProfile(normalized, job.configuration?.ruleSet);
 
           if (decision.errors.length) {
             await recordError(jobId, `Validation errors for @${item.login}`, decision.errors);
@@ -155,6 +212,10 @@ export async function runScrapingJob(jobId: string) {
             await bumpCounters(jobId, { newUsers: 1, flaggedUsers: 1 });
           }
         } catch (error) {
+          if (error instanceof Error && /cancelled/i.test(error.message)) {
+            await finalizeJob(jobId, "cancelled", "Cancelled by admin");
+            return;
+          }
           const message =
             error instanceof Error ? error.message : `Failed processing @${item.login}`;
           await recordError(jobId, message);
@@ -182,6 +243,10 @@ export async function runScrapingJob(jobId: string) {
       fresh.errorCount > 0 ? "completed_with_errors" : "completed";
     await finalizeJob(jobId, status, "Scraping finished");
   } catch (error) {
+    if (error instanceof Error && /cancelled/i.test(error.message)) {
+      await finalizeJob(jobId, "cancelled", "Cancelled by admin");
+      return;
+    }
     const message = error instanceof Error ? error.message : "Scraping job failed";
     await recordError(jobId, message);
     await finalizeJob(jobId, "failed", message);
@@ -199,7 +264,45 @@ async function finalizeJob(jobId: string, status: JobStatus, progressMessage: st
   });
 }
 
+/**
+ * Clear orphaned "running" jobs left behind when the worker process was restarted
+ * mid-scrape (or after cancel was requested with no active runner).
+ */
+export async function recoverOrphanedJobs() {
+  const now = new Date();
+
+  // Cancelled while orphaned: finalize immediately so they stop blocking the queue.
+  const cancelled = await prisma.scrapingJob.updateMany({
+    where: { status: "running", cancelRequested: true },
+    data: {
+      status: "cancelled",
+      completedAt: now,
+      progressMessage: "Cancelled by admin",
+    },
+  });
+
+  // Stale running jobs with no recent counter/progress updates (worker died).
+  const staleMs = Number(process.env.SCRAPER_STALE_MS || 5 * 60 * 1000);
+  const staleBefore = new Date(Date.now() - staleMs);
+  const stalled = await prisma.scrapingJob.updateMany({
+    where: {
+      status: "running",
+      cancelRequested: false,
+      updatedAt: { lt: staleBefore },
+    },
+    data: {
+      status: "failed",
+      completedAt: now,
+      progressMessage: "Job stalled after worker restart — start a new scrape to continue",
+    },
+  });
+
+  return { cancelled: cancelled.count, stalled: stalled.count };
+}
+
 export async function claimNextQueuedJob(): Promise<string | null> {
+  await recoverOrphanedJobs();
+
   const maxConcurrent = Number(process.env.SCRAPER_MAX_CONCURRENT_JOBS || 1);
   const running = await prisma.scrapingJob.count({ where: { status: "running" } });
   if (running >= maxConcurrent) return null;

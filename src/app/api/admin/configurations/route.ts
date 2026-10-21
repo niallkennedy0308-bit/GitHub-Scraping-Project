@@ -28,6 +28,21 @@ export async function POST(request: Request) {
     const parsed = scrapingConfigSchema.parse(body);
     const github = validateAndParseGitHubSearch(parsed.githubSearchUrl);
 
+    const duplicate = await prisma.scrapingConfiguration.findFirst({
+      where: {
+        OR: [{ githubSearchUrl: github.githubSearchUrl }, { searchQuery: github.searchQuery }],
+      },
+      select: { id: true, name: true },
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        {
+          error: `This search URL was already saved as “${duplicate.name}”. Each URL can be used only once. Delete that configuration if you need to set it up again.`,
+        },
+        { status: 409 },
+      );
+    }
+
     const created = await prisma.scrapingConfiguration.create({
       data: {
         name: parsed.name,

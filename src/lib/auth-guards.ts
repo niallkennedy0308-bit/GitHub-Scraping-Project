@@ -27,6 +27,11 @@ export async function requireAdmin() {
   return session;
 }
 
+/** Any authenticated app user (ADMIN or USER) for the regular portal. */
+export async function requireUser() {
+  return requireSession();
+}
+
 export function jsonError(error: unknown) {
   if (error instanceof AuthError) {
     return NextResponse.json({ error: error.message }, { status: error.status });

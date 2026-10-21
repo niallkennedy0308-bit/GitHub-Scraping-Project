@@ -2,11 +2,7 @@ import { prisma } from "@/lib/db";
 import type { NormalizedGitHubUser } from "@/lib/github/normalize";
 import type { ValidationDecision } from "@/lib/scam-rules/types";
 import { toJsonArray } from "@/lib/utils";
-import type { ValidationStatus } from "@prisma/client";
-
 export type ProcessOutcome = "new" | "duplicate" | "excluded" | "flagged" | "error";
-
-const MANUAL_STATUSES: ValidationStatus[] = ["legitimate", "confirmed_scam"];
 
 export async function processDiscoveredUser(input: {
   jobId: string;
@@ -24,8 +20,8 @@ export async function processDiscoveredUser(input: {
   });
 
   if (existing) {
-    const preserveManual =
-      existing.reviewedAt != null || MANUAL_STATUSES.includes(existing.validationStatus);
+    // Only skip auto re-score when an admin has manually reviewed the profile.
+    const preserveManual = existing.reviewedAt != null;
 
     await prisma.gitHubUser.update({
       where: { id: existing.id },
@@ -45,10 +41,11 @@ export async function processDiscoveredUser(input: {
         location: user.location,
         // Keep manually supplied contact fields when GitHub still omits them.
         email: user.email || existing.email,
-        linkedinUrl: existing.linkedinUrl,
+        linkedinUrl: user.linkedinUrl || existing.linkedinUrl,
         hireable: user.hireable,
         bio: user.bio,
         twitterUsername: user.twitterUsername,
+        profileReadme: user.profileReadme ?? existing.profileReadme,
         publicRepos: user.publicRepos,
         publicGists: user.publicGists,
         followers: user.followers,
@@ -102,9 +99,11 @@ export async function processDiscoveredUser(input: {
       blog: user.blog,
       location: user.location,
       email: user.email,
+      linkedinUrl: user.linkedinUrl,
       hireable: user.hireable,
       bio: user.bio,
       twitterUsername: user.twitterUsername,
+      profileReadme: user.profileReadme,
       publicRepos: user.publicRepos,
       publicGists: user.publicGists,
       followers: user.followers,

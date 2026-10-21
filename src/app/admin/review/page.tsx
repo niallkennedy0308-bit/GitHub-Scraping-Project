@@ -24,10 +24,21 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/admin/users?status=suspicious&pageSize=50&sort=riskScore&order=desc");
-    if (!res.ok) throw new Error((await res.json()).error || "Failed to load");
-    const data = await res.json();
-    setUsers(data.items);
+    // Review queue: suspicious (30–69%) and auto/manual scams (70%+).
+    const [suspiciousRes, scamRes] = await Promise.all([
+      fetch("/api/admin/users?status=suspicious&pageSize=100&sort=riskScore&order=desc"),
+      fetch("/api/admin/users?status=confirmed_scam&pageSize=100&sort=riskScore&order=desc"),
+    ]);
+    if (!suspiciousRes.ok) {
+      throw new Error((await suspiciousRes.json()).error || "Failed to load");
+    }
+    if (!scamRes.ok) {
+      throw new Error((await scamRes.json()).error || "Failed to load");
+    }
+    const suspicious = (await suspiciousRes.json()).items as UserRow[];
+    const scams = (await scamRes.json()).items as UserRow[];
+    const merged = [...suspicious, ...scams].sort((a, b) => b.riskScore - a.riskScore);
+    setUsers(merged);
   }
 
   useEffect(() => {

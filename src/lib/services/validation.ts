@@ -29,7 +29,7 @@ export function validateProfile(
       riskScore: 0,
       excluded: false,
       flagged: false,
-      status: "pending",
+      status: "legitimate",
       reasons: [],
       matchedRuleIds: [],
       errors: [],

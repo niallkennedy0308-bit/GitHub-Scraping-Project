@@ -1,9 +1,20 @@
 import "dotenv/config";
-import { claimNextQueuedJob, runScrapingJob } from "../src/lib/services/scraper";
+import {
+  claimNextQueuedJob,
+  recoverOrphanedJobs,
+  runScrapingJob,
+} from "../src/lib/services/scraper";
 
 async function loop() {
   const pollMs = Number(process.env.SCRAPER_POLL_MS || 2000);
   console.log(`[worker] started (poll ${pollMs}ms)`);
+
+  const recovered = await recoverOrphanedJobs();
+  if (recovered.cancelled || recovered.stalled) {
+    console.log(
+      `[worker] recovered orphans: cancelled=${recovered.cancelled} stalled=${recovered.stalled}`,
+    );
+  }
 
   while (true) {
     try {

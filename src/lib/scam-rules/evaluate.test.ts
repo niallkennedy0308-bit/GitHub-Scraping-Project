@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateRule, evaluateRules } from "@/lib/scam-rules/evaluate";
+import { evaluateRule, evaluateRules, statusFromRiskScore } from "@/lib/scam-rules/evaluate";
 import type { EvaluableRule } from "@/lib/scam-rules/types";
 
 const sample = {
@@ -115,7 +115,7 @@ describe("scam rule evaluation", () => {
     expect(decision.flagged).toBe(false);
   });
 
-  it("OR group flags on any match without confirming scam", () => {
+  it("OR group flags on any match and maps status from risk thresholds", () => {
     const decision = evaluateRules(
       sample,
       [
@@ -126,13 +126,24 @@ describe("scam rule evaluation", () => {
           operator: "lt",
           value: "1000",
           action: "flag",
+          scoreWeight: 10,
         }),
       ],
       "OR",
     );
     expect(decision.flagged).toBe(true);
     expect(decision.excluded).toBe(false);
-    expect(decision.status).toBe("suspicious");
+    expect(decision.riskScore).toBe(10);
+    expect(decision.status).toBe("pending"); // 1–29%
+  });
+
+  it("maps risk score bands to status", () => {
+    expect(statusFromRiskScore(0)).toBe("legitimate");
+    expect(statusFromRiskScore(15)).toBe("pending");
+    expect(statusFromRiskScore(30)).toBe("suspicious");
+    expect(statusFromRiskScore(69)).toBe("suspicious");
+    expect(statusFromRiskScore(70)).toBe("confirmed_scam");
+    expect(statusFromRiskScore(100)).toBe("confirmed_scam");
   });
 
   it("exclusion action marks excluded", () => {

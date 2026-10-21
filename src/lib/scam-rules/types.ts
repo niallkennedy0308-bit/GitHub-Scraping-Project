@@ -87,12 +87,18 @@ export type RuleMatch = {
   scoreWeight: number;
 };
 
+export type AutoValidationStatus =
+  | "pending"
+  | "legitimate"
+  | "suspicious"
+  | "confirmed_scam";
+
 export type ValidationDecision = {
   matches: RuleMatch[];
   riskScore: number;
   excluded: boolean;
   flagged: boolean;
-  status: "pending" | "suspicious";
+  status: AutoValidationStatus;
   reasons: string[];
   matchedRuleIds: string[];
   errors: string[];

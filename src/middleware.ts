@@ -2,22 +2,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-function isUserAllowedPath(pathname: string) {
-  if (pathname === "/admin/users") return true;
-  if (/^\/admin\/users\/[^/]+$/.test(pathname)) return true;
-  if (pathname === "/api/admin/users") return true;
-  if (/^\/api\/admin\/users\/[^/]+$/.test(pathname)) return true;
-  if (/^\/api\/admin\/users\/[^/]+\/contact$/.test(pathname)) return true;
-  return false;
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isAdminPage = pathname.startsWith("/admin");
   const isAdminApi = pathname.startsWith("/api/admin");
+  const isPortalPage = pathname.startsWith("/portal");
+  const isPortalApi = pathname.startsWith("/api/portal");
 
-  if (!isAdminPage && !isAdminApi) {
+  if (!isAdminPage && !isAdminApi && !isPortalPage && !isPortalApi) {
     return NextResponse.next();
   }
 
@@ -27,7 +20,7 @@ export async function middleware(request: NextRequest) {
   });
 
   if (!token) {
-    if (isAdminApi) {
+    if (isAdminApi || isPortalApi) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const loginUrl = new URL("/login", request.url);
@@ -35,32 +28,28 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (token.role === "ADMIN") {
+  // Regular users use the dedicated portal only.
+  if (token.role === "USER") {
+    if (isAdminPage || isAdminApi) {
+      if (isAdminApi) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/portal/discover", request.url));
+    }
     return NextResponse.next();
   }
 
-  if (token.role === "USER") {
-    if (pathname === "/admin" || pathname === "/admin/") {
-      return NextResponse.redirect(new URL("/admin/users", request.url));
-    }
-    if (isUserAllowedPath(pathname)) {
-      // USER may only read user list/detail and update missing contact fields.
-      if (isAdminApi && request.method !== "GET" && !pathname.endsWith("/contact")) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      if (pathname.endsWith("/contact") && request.method !== "PATCH") {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      return NextResponse.next();
-    }
+  if (token.role === "ADMIN") {
+    // Admins keep full admin access; portal APIs/pages are also allowed if opened.
+    return NextResponse.next();
   }
 
-  if (isAdminApi) {
+  if (isAdminApi || isPortalApi) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   return NextResponse.redirect(new URL("/forbidden", request.url));
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ["/admin/:path*", "/api/admin/:path*", "/portal/:path*", "/api/portal/:path*"],
 };

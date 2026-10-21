@@ -25,6 +25,7 @@ type Config = {
   ruleSet?: RuleSet | null;
   createdBy?: { email: string; name?: string | null };
   updatedAt: string;
+  _count?: { jobs: number };
 };
 
 export default function ConfigurationsPage() {
@@ -134,6 +135,21 @@ export default function ConfigurationsPage() {
     await load();
   }
 
+  async function removeConfig(config: Config) {
+    const used = (config._count?.jobs || 0) > 0;
+    const message = used
+      ? `Delete “${config.name}”? This removes the search URL from the deduplication list so it can be set up again. Existing job history is kept.`
+      : `Delete “${config.name}”? This search URL will no longer be reserved.`;
+    if (!window.confirm(message)) return;
+    setError(null);
+    const res = await fetch(`/api/admin/configurations/${config.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setError((await res.json()).error || "Delete failed");
+      return;
+    }
+    await load();
+  }
+
   async function startJob(configId: string) {
     setError(null);
     if (tokenConfigured === false) {
@@ -167,7 +183,7 @@ export default function ConfigurationsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Scraping Configurations"
-        description="Build a GitHub users search with keywords and advanced filters. The scrape URL is generated automatically."
+        description="Each GitHub search URL can be saved and scraped once. Saved URLs are kept only to block duplicates. Delete a configuration to remove that URL from the list."
       />
 
       {error ? <Alert>{error}</Alert> : null}
@@ -264,7 +280,9 @@ export default function ConfigurationsPage() {
               </tr>
             </thead>
             <tbody>
-              {configs.map((config) => (
+              {configs.map((config) => {
+                const used = (config._count?.jobs || 0) > 0;
+                return (
                 <tr key={config.id} className="border-t border-border">
                   <td className="px-4 py-3">
                     <div className="font-medium text-foreground">{config.name}</div>
@@ -275,9 +293,12 @@ export default function ConfigurationsPage() {
                   </td>
                   <td className="px-4 py-3">{config.ruleSet?.name || "—"}</td>
                   <td className="px-4 py-3">
-                    <Badge tone={config.enabled ? "success" : "neutral"}>
-                      {config.enabled ? "Enabled" : "Disabled"}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1.5">
+                      {used ? <Badge tone="info">Used</Badge> : null}
+                      <Badge tone={config.enabled ? "success" : "neutral"}>
+                        {config.enabled ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted">{formatDate(config.updatedAt)}</td>
                   <td className="px-4 py-3">
@@ -288,6 +309,7 @@ export default function ConfigurationsPage() {
                       <Button
                         onClick={() => startJob(config.id)}
                         disabled={
+                          used ||
                           !config.enabled ||
                           startingConfigId === config.id ||
                           tokenConfigured === false
@@ -298,14 +320,20 @@ export default function ConfigurationsPage() {
                             <Loader2 className="h-4 w-4 animate-spin" />
                             Starting…
                           </>
+                        ) : used ? (
+                          "Already used"
                         ) : (
                           "Start job"
                         )}
                       </Button>
+                      <Button variant="danger" onClick={() => removeConfig(config)}>
+                        Delete
+                      </Button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {configs.length === 0 ? (

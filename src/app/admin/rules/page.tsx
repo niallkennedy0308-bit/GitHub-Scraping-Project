@@ -6,6 +6,7 @@ import { Alert, Button, Card, Input } from "@/components/admin/ui";
 import { evaluateRules } from "@/lib/scam-rules/evaluate";
 import {
   EMPTY_SIMPLE_RULE_FORM,
+  RULE_SCORE_WEIGHTS,
   rulesToSimpleForm,
   simpleFormToRules,
   type SimpleRuleForm,
@@ -228,12 +229,18 @@ export default function RulesPage() {
             <div className="rounded-2xl border border-border bg-[color:var(--surface-muted)] p-4 md:p-5">
               <h2 className="font-semibold text-foreground">Detection conditions</h2>
               <p className="mt-1 text-sm text-muted">
-                Fill only the conditions you want to check. Empty fields are ignored.
+                Fill only the conditions you want to check. Empty fields are ignored. Risk % is the
+                sum of matched weights (max 100%).
               </p>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <label className="text-sm text-muted">
-                  Location
+                  <span className="flex items-center justify-between gap-2">
+                    Location
+                    <span className="font-mono text-[11px] text-foreground/80">
+                      +{RULE_SCORE_WEIGHTS.baseSignal}%
+                    </span>
+                  </span>
                   <Input
                     className="mt-1"
                     value={form.location}
@@ -246,7 +253,12 @@ export default function RulesPage() {
                 </label>
 
                 <label className="text-sm text-muted">
-                  Created date
+                  <span className="flex items-center justify-between gap-2">
+                    Created date
+                    <span className="font-mono text-[11px] text-foreground/80">
+                      +{RULE_SCORE_WEIGHTS.baseSignal}%
+                    </span>
+                  </span>
                   <Input
                     className="mt-1"
                     type="date"
@@ -259,7 +271,12 @@ export default function RulesPage() {
                 </label>
 
                 <label className="text-sm text-muted md:col-span-2">
-                  Repository number
+                  <span className="flex max-w-xs items-center justify-between gap-2">
+                    Repository number
+                    <span className="font-mono text-[11px] text-foreground/80">
+                      +{RULE_SCORE_WEIGHTS.baseSignal}%
+                    </span>
+                  </span>
                   <Input
                     className="mt-1 max-w-xs"
                     type="number"
@@ -277,43 +294,64 @@ export default function RulesPage() {
               <div className="mt-6 space-y-3 rounded-xl border border-border bg-[color:var(--surface-solid)] p-4">
                 <p className="text-sm font-medium text-foreground">Missing profile signals</p>
                 <p className="text-xs text-muted">
-                  Checked items flag a user when that information is missing.
+                  Checked items flag a user when that information is missing. LinkedIn and email
+                  carry the highest risk weights.
                 </p>
 
-                <label className="flex items-center gap-3 text-sm text-foreground/90">
-                  <input
-                    type="checkbox"
-                    checked={form.checkEmail}
-                    onChange={(e) => setForm({ ...form, checkEmail: e.target.checked })}
-                  />
-                  Email
+                <label className="flex items-center justify-between gap-3 text-sm text-foreground/90">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={form.checkLinkedin}
+                      onChange={(e) => setForm({ ...form, checkLinkedin: e.target.checked })}
+                    />
+                    LinkedIn
+                  </span>
+                  <span className="font-mono text-[11px] text-foreground/80">
+                    +{RULE_SCORE_WEIGHTS.missingLinkedIn}%
+                  </span>
                 </label>
 
-                <label className="flex items-center gap-3 text-sm text-foreground/90">
-                  <input
-                    type="checkbox"
-                    checked={form.checkLinkedin}
-                    onChange={(e) => setForm({ ...form, checkLinkedin: e.target.checked })}
-                  />
-                  LinkedIn
+                <label className="flex items-center justify-between gap-3 text-sm text-foreground/90">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={form.checkEmail}
+                      onChange={(e) => setForm({ ...form, checkEmail: e.target.checked })}
+                    />
+                    Email
+                  </span>
+                  <span className="font-mono text-[11px] text-foreground/80">
+                    +{RULE_SCORE_WEIGHTS.missingEmail}%
+                  </span>
                 </label>
 
-                <label className="flex items-center gap-3 text-sm text-foreground/90">
-                  <input
-                    type="checkbox"
-                    checked={form.checkSocialLinks}
-                    onChange={(e) => setForm({ ...form, checkSocialLinks: e.target.checked })}
-                  />
-                  Any social links
+                <label className="flex items-center justify-between gap-3 text-sm text-foreground/90">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={form.checkSocialLinks}
+                      onChange={(e) => setForm({ ...form, checkSocialLinks: e.target.checked })}
+                    />
+                    Any social links
+                  </span>
+                  <span className="font-mono text-[11px] text-foreground/80">
+                    +{RULE_SCORE_WEIGHTS.baseSignal}%
+                  </span>
                 </label>
 
-                <label className="flex items-center gap-3 text-sm text-foreground/90">
-                  <input
-                    type="checkbox"
-                    checked={form.checkCompany}
-                    onChange={(e) => setForm({ ...form, checkCompany: e.target.checked })}
-                  />
-                  Company
+                <label className="flex items-center justify-between gap-3 text-sm text-foreground/90">
+                  <span className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={form.checkCompany}
+                      onChange={(e) => setForm({ ...form, checkCompany: e.target.checked })}
+                    />
+                    Company
+                  </span>
+                  <span className="font-mono text-[11px] text-foreground/80">
+                    +{RULE_SCORE_WEIGHTS.baseSignal}%
+                  </span>
                 </label>
               </div>
             </div>

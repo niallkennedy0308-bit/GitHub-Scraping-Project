@@ -4,6 +4,7 @@ import { jsonError, requireAdmin } from "@/lib/auth-guards";
 import { prisma } from "@/lib/db";
 import { SUPPORTED_FIELDS } from "@/lib/scam-rules/types";
 import { writeAuditLog } from "@/lib/services/audit";
+import { recalculateAllRiskScores } from "@/lib/services/recalculate-risk";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -94,7 +95,12 @@ export async function PATCH(request: Request, { params }: Params) {
       entityId: id,
     });
 
-    return NextResponse.json(updated);
+    let riskRecalc = null;
+    if (body.rules) {
+      riskRecalc = await recalculateAllRiskScores();
+    }
+
+    return NextResponse.json({ ...updated, riskRecalc });
   } catch (error) {
     return jsonError(error);
   }

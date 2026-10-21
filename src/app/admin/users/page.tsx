@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Copy, Check } from "lucide-react";
+import { Check, Mail } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   markUsersListRestorePending,
@@ -41,22 +41,27 @@ type UserRow = {
   lastScrapedAt: string;
 };
 
-function contactDisplay(user: UserRow): { kind: "linkedin" | "email" | "empty"; value: string } {
+type ContactItem = { kind: "linkedin" | "email"; value: string };
+
+function LinkedInIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
+  );
+}
+
+function contactItems(user: UserRow): ContactItem[] {
+  const items: ContactItem[] = [];
   const linkedin =
     user.linkedinUrl?.trim() ||
     (user.blog?.trim() && /linkedin\.com/i.test(user.blog) ? user.blog.trim() : "");
-  if (linkedin) return { kind: "linkedin", value: linkedin };
-  if (user.email?.trim()) return { kind: "email", value: user.email.trim() };
-  return { kind: "empty", value: "empty" };
+  if (user.email?.trim()) items.push({ kind: "email", value: user.email.trim() });
+  if (linkedin) items.push({ kind: "linkedin", value: linkedin });
+  return items;
 }
 
-function CopyContactChip({
-  kind,
-  value,
-}: {
-  kind: "linkedin" | "email";
-  value: string;
-}) {
+function CopyContactChip({ kind, value }: ContactItem) {
   const [copied, setCopied] = useState(false);
 
   async function copyValue() {
@@ -69,18 +74,22 @@ function CopyContactChip({
     }
   }
 
+  const label = kind === "linkedin" ? "LinkedIn" : "Email";
+
   return (
     <button
       type="button"
       onClick={copyValue}
-      title={`Copy ${value}`}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-slate-300/90 ring-1 ring-white/10 transition hover:bg-white/[0.08] hover:text-white"
+      title={`${label}: ${value} (click to copy)`}
+      aria-label={`Copy ${label}`}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-slate-300/90 ring-1 ring-white/10 transition hover:bg-white/[0.08] hover:text-white"
     >
-      <span>{kind === "linkedin" ? "Linkedin" : "Email"}</span>
       {copied ? (
-        <Check className="h-3 w-3 text-emerald-400" />
+        <Check className="h-3.5 w-3.5 text-emerald-400" />
+      ) : kind === "linkedin" ? (
+        <LinkedInIcon className="h-3.5 w-3.5" />
       ) : (
-        <Copy className="h-3 w-3 opacity-70" />
+        <Mail className="h-3.5 w-3.5" />
       )}
     </button>
   );
@@ -101,6 +110,8 @@ function UsersTable() {
   const remembered = useMemo(() => readUsersListMemory(), []);
   const [q, setQ] = useState(remembered?.q || "");
   const [debouncedQ, setDebouncedQ] = useState(remembered?.q || "");
+  const [location, setLocation] = useState(remembered?.location || "");
+  const [debouncedLocation, setDebouncedLocation] = useState(remembered?.location || "");
   const [status, setStatus] = useState(remembered?.status || "");
   const [sort, setSort] = useState(remembered?.sort || "lastScrapedAt");
   const [order, setOrder] = useState<"asc" | "desc">(remembered?.order || "desc");
@@ -118,6 +129,11 @@ function UsersTable() {
     return () => clearTimeout(t);
   }, [q]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLocation(location), 300);
+    return () => clearTimeout(t);
+  }, [location]);
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams({
       page: String(page),
@@ -126,10 +142,11 @@ function UsersTable() {
       order,
     });
     if (debouncedQ) params.set("q", debouncedQ);
+    if (debouncedLocation) params.set("location", debouncedLocation);
     if (status) params.set("status", status);
     if (jobId) params.set("jobId", jobId);
     return params.toString();
-  }, [page, pageSize, sort, order, debouncedQ, status, jobId]);
+  }, [page, pageSize, sort, order, debouncedQ, debouncedLocation, status, jobId]);
 
   useEffect(() => {
     setLoading(true);
@@ -153,6 +170,7 @@ function UsersTable() {
       if (y <= 0) return;
       saveUsersListMemory({
         q,
+        location,
         status,
         sort,
         order,
@@ -165,11 +183,12 @@ function UsersTable() {
     return () => {
       window.removeEventListener("scroll", persistScroll);
     };
-  }, [q, status, sort, order, page, pageSize]);
+  }, [q, location, status, sort, order, page, pageSize]);
 
   useEffect(() => {
     saveUsersListMemory({
       q,
+      location,
       status,
       sort,
       order,
@@ -177,7 +196,7 @@ function UsersTable() {
       pageSize,
       scrollY: window.scrollY || window.pageYOffset || 0,
     });
-  }, [q, status, sort, order, page, pageSize]);
+  }, [q, location, status, sort, order, page, pageSize]);
 
   // Restore after table content is ready (and when returning from detail).
   useEffect(() => {
@@ -189,7 +208,6 @@ function UsersTable() {
       if (done) return;
       const y = restoreScroll("/admin/users");
       if (y == null || y <= 0) return;
-      // Confirm the browser actually landed near the target before clearing the flag.
       if (Math.abs((window.scrollY || 0) - y) <= 4) {
         done = true;
         shouldRestoreRef.current = false;
@@ -215,6 +233,7 @@ function UsersTable() {
     saveUsersListMemory(
       {
         q,
+        location,
         status,
         sort,
         order,
@@ -265,46 +284,82 @@ function UsersTable() {
         description="Search, filter, and review stored profiles. Usernames open the public GitHub profile."
       />
 
-      <Card className="flex flex-wrap gap-3 p-4">
-        <Input
-          className="min-w-[220px] flex-1"
-          placeholder="Search login, name, bio, company, location"
-          value={q}
-          onChange={(e) => {
-            setPage(1);
-            setQ(e.target.value);
-          }}
-        />
-        <Select
-          className="w-auto min-w-[10rem]"
-          value={status}
-          onChange={(e) => {
-            setPage(1);
-            setStatus(e.target.value);
-          }}
-        >
-          <option value="">All statuses</option>
-          <option value="pending">pending</option>
-          <option value="legitimate">legitimate</option>
-          <option value="suspicious">suspicious</option>
-          <option value="confirmed_scam">confirmed_scam</option>
-        </Select>
-        <Select
-          className="w-auto min-w-[12rem]"
-          value={`${sort}:${order}`}
-          onChange={(e) => {
-            const [s, o] = e.target.value.split(":");
-            setSort(s);
-            setOrder(o as "asc" | "desc");
-          }}
-        >
-          <option value="lastScrapedAt:desc">Last synced ↓</option>
-          <option value="followers:desc">Followers ↓</option>
-          <option value="publicRepos:desc">Repos ↓</option>
-          <option value="riskScore:desc">Risk score ↓</option>
-          <option value="githubCreatedAt:desc">Account created ↓</option>
-          <option value="login:asc">Login A–Z</option>
-        </Select>
+      <Card className="p-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-12">
+          <label className="block text-xs text-muted sm:col-span-2 xl:col-span-4">
+            Search
+            <Input
+              className="mt-1"
+              placeholder="Login, name, bio, company"
+              value={q}
+              onChange={(e) => {
+                setPage(1);
+                setQ(e.target.value);
+              }}
+            />
+          </label>
+          <label className="block text-xs text-muted sm:col-span-1 xl:col-span-3">
+            Location
+            <Input
+              className="mt-1"
+              placeholder="e.g. USA, Remote, Texas"
+              value={location}
+              onChange={(e) => {
+                setPage(1);
+                setLocation(e.target.value);
+              }}
+            />
+          </label>
+          <label className="block text-xs text-muted sm:col-span-1 xl:col-span-2">
+            Status
+            <Select
+              className="mt-1"
+              value={status}
+              onChange={(e) => {
+                setPage(1);
+                setStatus(e.target.value);
+              }}
+            >
+              <option value="">All statuses</option>
+              <option value="legitimate">legitimate (0%)</option>
+              <option value="pending">pending (1–29%)</option>
+              <option value="suspicious">suspicious (30–69%)</option>
+              <option value="confirmed_scam">confirmed scam (70%+)</option>
+            </Select>
+          </label>
+          <label className="block text-xs text-muted sm:col-span-1 xl:col-span-2">
+            Sort by
+            <Select
+              className="mt-1"
+              value={sort}
+              onChange={(e) => {
+                setPage(1);
+                setSort(e.target.value);
+              }}
+            >
+              <option value="lastScrapedAt">Last synced</option>
+              <option value="followers">Followers</option>
+              <option value="publicRepos">Repos</option>
+              <option value="riskScore">Risk score</option>
+              <option value="githubCreatedAt">Account created</option>
+              <option value="login">Login</option>
+            </Select>
+          </label>
+          <label className="block text-xs text-muted sm:col-span-1 xl:col-span-1">
+            Order
+            <Select
+              className="mt-1"
+              value={order}
+              onChange={(e) => {
+                setPage(1);
+                setOrder(e.target.value as "asc" | "desc");
+              }}
+            >
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </Select>
+          </label>
+        </div>
       </Card>
 
       {isAdmin && selected.size > 0 ? (
@@ -369,101 +424,105 @@ function UsersTable() {
                 </tr>
               ) : null}
               {data?.items.map((user) => {
-                const contact = contactDisplay(user);
+                const contacts = contactItems(user);
                 return (
-                <tr
-                  key={user.id}
-                  className="ui-row-hover border-t border-border align-top transition"
-                >
-                  <td className="px-3 py-3.5">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded accent-[color:var(--accent)]"
-                      checked={selected.has(user.id)}
-                      onChange={(e) => {
-                        const next = new Set(selected);
-                        if (e.target.checked) next.add(user.id);
-                        else next.delete(user.id);
-                        setSelected(next);
-                      }}
-                    />
-                  </td>
-                  <td className="px-3 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <Link
-                        href={`/admin/users/${user.id}`}
-                        scroll={false}
-                        onClick={rememberBeforeOpenDetail}
-                        className="shrink-0 transition hover:opacity-90"
-                        title={`Open ${user.login}`}
-                      >
-                        {user.avatarUrl ? (
-                          <Image
-                            src={user.avatarUrl}
-                            alt={user.login}
-                            width={34}
-                            height={34}
-                            className="rounded-full ring-2 ring-white shadow-sm"
-                            unoptimized
-                          />
-                        ) : (
-                          <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-[color:var(--surface-muted)] text-xs font-semibold text-muted">
-                            {user.login.slice(0, 1).toUpperCase()}
-                          </div>
-                        )}
-                      </Link>
-                      <div>
-                        <a
-                          href={user.htmlUrl || `https://github.com/${user.login}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="ui-link font-semibold transition hover:underline underline-offset-2"
+                  <tr
+                    key={user.id}
+                    className="ui-row-hover border-t border-border align-top transition"
+                  >
+                    <td className="px-3 py-3.5">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded accent-[color:var(--accent)]"
+                        checked={selected.has(user.id)}
+                        onChange={(e) => {
+                          const next = new Set(selected);
+                          if (e.target.checked) next.add(user.id);
+                          else next.delete(user.id);
+                          setSelected(next);
+                        }}
+                      />
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <Link
+                          href={`/admin/users/${user.id}`}
+                          scroll={false}
+                          onClick={rememberBeforeOpenDetail}
+                          className="shrink-0 transition hover:opacity-90"
+                          title={`Open ${user.login}`}
                         >
-                          {user.login}
-                        </a>
-                        <div className="text-xs text-muted">{user.name || "—"}</div>
+                          {user.avatarUrl ? (
+                            <Image
+                              src={user.avatarUrl}
+                              alt={user.login}
+                              width={34}
+                              height={34}
+                              className="rounded-full ring-2 ring-white shadow-sm"
+                              unoptimized
+                            />
+                          ) : (
+                            <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-[color:var(--surface-muted)] text-xs font-semibold text-muted">
+                              {user.login.slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                        </Link>
+                        <div>
+                          <a
+                            href={user.htmlUrl || `https://github.com/${user.login}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="ui-link font-semibold transition hover:underline underline-offset-2"
+                          >
+                            {user.login}
+                          </a>
+                          <div className="text-xs text-muted">{user.name || "—"}</div>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3.5">
-                    {contact.kind === "empty" ? (
-                      <span className="text-xs text-muted/80">empty</span>
-                    ) : (
-                      <CopyContactChip kind={contact.kind} value={contact.value} />
-                    )}
-                  </td>
-                  <td className="max-w-[220px] truncate px-3 py-3.5 text-muted">
-                    {user.bio || "—"}
-                  </td>
-                  <td className="px-3 py-3.5 text-foreground/90">{user.location || "—"}</td>
-                  <td className="px-3 py-3.5 font-medium tabular-nums text-foreground">
-                    {user.publicRepos}
-                  </td>
-                  <td className="px-3 py-3.5 font-medium tabular-nums text-foreground">
-                    {user.followers}
-                  </td>
-                  <td className="px-3 py-3.5 font-medium tabular-nums text-foreground">
-                    {user.riskScore}
-                  </td>
-                  <td className="px-3 py-3.5">
-                    <Badge
-                      tone={
-                        user.validationStatus === "confirmed_scam"
-                          ? "danger"
-                          : user.validationStatus === "suspicious"
-                            ? "warning"
-                            : user.validationStatus === "legitimate"
-                              ? "success"
-                              : "info"
-                      }
-                    >
-                      {user.validationStatus}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-3.5 text-xs text-muted">
-                    {formatDate(user.firstScrapedAt)}
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-3 py-3.5">
+                      {contacts.length === 0 ? (
+                        <span className="text-xs text-muted/80">empty</span>
+                      ) : (
+                        <div className="flex flex-nowrap items-center gap-1.5">
+                          {contacts.map((item) => (
+                            <CopyContactChip key={item.kind} kind={item.kind} value={item.value} />
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="max-w-[220px] truncate px-3 py-3.5 text-muted">
+                      {user.bio || "—"}
+                    </td>
+                    <td className="px-3 py-3.5 text-foreground/90">{user.location || "—"}</td>
+                    <td className="px-3 py-3.5 font-medium tabular-nums text-foreground">
+                      {user.publicRepos}
+                    </td>
+                    <td className="px-3 py-3.5 font-medium tabular-nums text-foreground">
+                      {user.followers}
+                    </td>
+                    <td className="px-3 py-3.5 font-medium tabular-nums text-foreground">
+                      {Math.min(100, Math.max(0, user.riskScore))}%
+                    </td>
+                    <td className="px-3 py-3.5">
+                      <Badge
+                        tone={
+                          user.validationStatus === "confirmed_scam"
+                            ? "danger"
+                            : user.validationStatus === "suspicious"
+                              ? "warning"
+                              : user.validationStatus === "legitimate"
+                                ? "success"
+                                : "info"
+                        }
+                      >
+                        {user.validationStatus}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-3.5 text-xs text-muted">
+                      {formatDate(user.firstScrapedAt)}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -480,7 +539,7 @@ function UsersTable() {
             <label className="flex items-center gap-2 text-muted">
               <span className="whitespace-nowrap">Rows per page</span>
               <Select
-                className="w-auto min-w-[5.5rem]"
+                className="!w-auto min-w-[5.5rem]"
                 value={String(pageSize)}
                 onChange={(e) => {
                   setPage(1);

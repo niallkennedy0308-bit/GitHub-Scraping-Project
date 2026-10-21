@@ -47,6 +47,13 @@ enum RuleAction {
   score
 }
 
+enum ScamReportStatus {
+  pending
+  under_review
+  resolved
+  dismissed
+}
+
 model User {
   id                   String   @id @default(cuid())
   email                String   @unique
@@ -61,6 +68,9 @@ model User {
   scrapingJobs           ScrapingJob[]           @relation("JobStartedBy")
   reviews                UserValidationHistory[] @relation("ReviewedBy")
   auditLogs              AuditLog[]
+  githubContacts         UserGithubContact[]
+  scamReports            ScamReport[]            @relation("ScamReportReporter")
+  reviewedScamReports    ScamReport[]            @relation("ScamReportReviewedBy")
 }
 
 model ScrapingConfiguration {
@@ -78,6 +88,8 @@ model ScrapingConfiguration {
   createdBy User              @relation("ConfigCreatedBy", fields: [createdById], references: [id])
   ruleSet   ScamRuleSet?      @relation(fields: [ruleSetId], references: [id])
   jobs      ScrapingJob[]
+
+  @@unique([githubSearchUrl])
 }
 
 model ScamRuleSet {
@@ -115,7 +127,7 @@ model ScamDetectionRule {
 
 model ScrapingJob {
   id                   String    @id @default(cuid())
-  configurationId      String
+  configurationId      String?
   githubSearchUrl      String
   searchQuery          String?
   status               JobStatus @default(queued)
@@ -133,7 +145,7 @@ model ScrapingJob {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  configuration ScrapingConfiguration @relation(fields: [configurationId], references: [id])
+  configuration ScrapingConfiguration? @relation(fields: [configurationId], references: [id], onDelete: SetNull)
   startedBy     User                  @relation("JobStartedBy", fields: [startedById], references: [id])
   jobUsers      ScrapingJobUser[]
   errors        ScrapingJobError[]
@@ -161,6 +173,8 @@ model GitHubUser {
   hireable           Boolean?
   bio                String?
   twitterUsername    String?
+  /** Markdown from the special profile README repo ({login}/{login}). */
+  profileReadme      String?
   publicRepos        Int              @default(0)
   publicGists        Int              @default(0)
   followers          Int              @default(0)
@@ -184,6 +198,8 @@ model GitHubUser {
   lastScrapingJob ScrapingJob?            @relation("LastScrapingJob", fields: [lastScrapingJobId], references: [id])
   jobUsers        ScrapingJobUser[]
   history         UserValidationHistory[]
+  savedByUsers    UserGithubContact[]
+  scamReports     ScamReport[]
 
   @@index([login])
   @@index([validationStatus])
@@ -196,6 +212,50 @@ model GitHubUser {
   @@index([company])
   @@index([location])
   @@index([deletedAt])
+}
+
+/** Personal saved-contact relationship (app user ↔ GitHub profile). */
+model UserGithubContact {
+  id           String   @id @default(cuid())
+  userId       String
+  githubUserId String
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubUser GitHubUser @relation(fields: [githubUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, githubUserId])
+  @@index([userId])
+  @@index([githubUserId])
+  @@index([createdAt])
+}
+
+/** Regular-user submitted scam report (does not auto-confirm scam). */
+model ScamReport {
+  id             String           @id @default(cuid())
+  githubUserId   String
+  reporterUserId String
+  reason         String
+  description    String
+  evidenceUrl    String?
+  status         ScamReportStatus @default(pending)
+  adminNotes     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  githubUser GitHubUser @relation(fields: [githubUserId], references: [id], onDelete: Cascade)
+  reporter   User       @relation("ScamReportReporter", fields: [reporterUserId], references: [id], onDelete: Cascade)
+  reviewedBy User?      @relation("ScamReportReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([githubUserId])
+  @@index([reporterUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([reason])
 }
 
 model ScrapingJobUser {

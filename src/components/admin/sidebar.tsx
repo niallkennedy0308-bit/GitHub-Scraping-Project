@@ -42,8 +42,9 @@ const links: {
   },
   { href: "/admin/rules", label: "Scam Detection Rules", icon: Shield, roles: ["ADMIN"] },
   { href: "/admin/jobs", label: "Scraping Jobs", icon: Activity, roles: ["ADMIN"] },
-  { href: "/admin/users", label: "GitHub Users", icon: Users, roles: ["ADMIN", "USER"] },
+  { href: "/admin/users", label: "GitHub Users", icon: Users, roles: ["ADMIN"] },
   { href: "/admin/review", label: "Scam Review", icon: AlertTriangle, roles: ["ADMIN"] },
+  { href: "/admin/reports", label: "User Scam Reports", icon: ClipboardList, roles: ["ADMIN"] },
   { href: "/admin/history", label: "Scraping History", icon: History, roles: ["ADMIN"] },
   { href: "/admin/settings", label: "Settings", icon: KeyRound, roles: ["ADMIN"] },
 ];

@@ -69,7 +69,7 @@ export async function POST(request: Request, { params }: Params) {
         : null;
 
       const ruleSet =
-        config?.configuration.ruleSet ??
+        config?.configuration?.ruleSet ??
         (await prisma.scamRuleSet.findFirst({
           where: { enabled: true },
           include: { rules: true },
